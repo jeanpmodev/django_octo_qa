@@ -1,91 +1,114 @@
 import ast
-import re
+import os
 from pathlib import Path
 from django.apps import apps
 from django.conf import settings
 
+IGNORED_DIRS = {".venv", "venv", ".git", "__pycache__", "node_modules", ".pytest_cache", "migrations"}
 
-def _get_search_roots() -> list[tuple[str, Path]]:
+
+def get_scan_roots() -> list[tuple[str, Path]]:
+    """Resolve both installed app paths and external repo/project test roots."""
     roots: list[tuple[str, Path]] = []
-    seen: set[Path] = set()
-    base_dir = getattr(settings, "BASE_DIR", None) or Path.cwd()
+    seen_paths: set[Path] = set()
+
+    # 1. Project root (BASE_DIR)
+    base_dir = getattr(settings, "BASE_DIR", None)
     if base_dir:
         base_path = Path(base_dir).resolve()
         roots.append(("project_root", base_path))
-        seen.add(base_path)
+        seen_paths.add(base_path)
+
+    # 2. All active Django apps (including Satellites & User Apps)
     for app_config in apps.get_app_configs():
+        if app_config.name.startswith("django.contrib."):
+            continue
+
         app_path = Path(app_config.path).resolve()
-        if app_path not in seen:
+        if app_path not in seen_paths:
             roots.append((app_config.label, app_path))
-            seen.add(app_path)
+            seen_paths.add(app_path)
+
+        # Check external sibling 'tests/' folder (editable installs / local dev repos)
+        if app_path.parent.name == "src":
+            repo_root = app_path.parent.parent
+            for ext_dir_name in ("tests", "features"):
+                ext_path = repo_root / ext_dir_name
+                if ext_path.is_dir() and ext_path not in seen_paths:
+                    roots.append((app_config.label, ext_path))
+                    seen_paths.add(ext_path)
+
     return roots
 
 
-def _extract_pytest_items(app_label: str, test_file: Path) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
-    try:
-        tree = ast.parse(test_file.read_text(encoding="utf-8"))
-        for node in tree.body:
-            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
-                items.append({"app": app_label, "engine": "pytest", "name": node.name, "target": f"{test_file}::{node.name}"})
-    except Exception:
-        pass
-    return items
+def discover_all_tests() -> list[dict]:
+    """Scan all resolved roots across the 3 pillars: Pytest, BDD (Behave), and Locust."""
+    inventory: list[dict] = []
+    scanned_files: set[Path] = set()
 
+    for app_label, root_path in get_scan_roots():
+        if not root_path.exists():
+            continue
 
-def _extract_behave_scenarios(app_label: str, feature_file: Path) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
-    try:
-        lines = feature_file.read_text(encoding="utf-8").splitlines()
-        feature_name = feature_file.stem
-        for idx, line in enumerate(lines, start=1):
-            stripped = line.strip()
-            if stripped.startswith("Feature:"):
-                feature_name = stripped.split(":", 1)[1].strip()
-            elif re.match(r"^Scenario(?: Outline)?:", stripped):
-                scen_name = stripped.split(":", 1)[1].strip()
-                items.append({"app": app_label, "engine": "behave", "name": f"{feature_name} -> {scen_name}", "target": f"{feature_file}:{idx}"})
-    except Exception:
-        pass
-    return items
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            # Prune ignored directories in-place
+            dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS]
+            current_dir = Path(dirpath)
 
+            for filename in filenames:
+                file_path = (current_dir / filename).resolve()
+                if file_path in scanned_files:
+                    continue
+                scanned_files.add(file_path)
 
-def _extract_locust_tasks(app_label: str, py_file: Path) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
-    try:
-        tree = ast.parse(py_file.read_text(encoding="utf-8"))
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                bases = {getattr(b, "id", None) or getattr(b, "attr", None) for b in node.bases}
-                if bases & {"HttpUser", "FastHttpUser", "User"}:
-                    items.append({"app": app_label, "engine": "locust", "name": node.name, "target": str(py_file)})
-    except Exception:
-        pass
-    return items
+                # PILLAR 1: BDD (Behave .feature files)
+                if filename.endswith(".feature"):
+                    for line in file_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                        stripped = line.strip()
+                        if stripped.startswith(("Scenario:", "Scenario Outline:")):
+                            scenario_name = stripped.split(":", 1)[1].strip()
+                            inventory.append({
+                                "app": app_label,
+                                "engine": "behave",
+                                "name": scenario_name,
+                                "target": str(file_path),
+                            })
 
+                # PILLAR 2 & 3: Python files (Pytest & Locust)
+                elif filename.endswith(".py"):
+                    try:
+                        tree = ast.parse(file_path.read_text(encoding="utf-8", errors="ignore"))
+                    except SyntaxError:
+                        continue
 
-def discover_qa_inventory() -> list[dict[str, str]]:
-    inventory: list[dict[str, str]] = []
-    seen_targets: set[str] = set()
-    for label, root in _get_search_roots():
-        for test_file in sorted((root / "tests").rglob("test_*.py")) if (root / "tests").is_dir() else []:
-            for item in _extract_pytest_items(label, test_file):
-                if item["target"] not in seen_targets:
-                    inventory.append(item)
-                    seen_targets.add(item["target"])
-        for feature_file in sorted((root / "features").rglob("*.feature")) if (root / "features").is_dir() else []:
-            for item in _extract_behave_scenarios(label, feature_file):
-                if item["target"] not in seen_targets:
-                    inventory.append(item)
-                    seen_targets.add(item["target"])
-        candidates = [root / "locustfile.py", *root.glob("locust_*.py")]
-        for sub in ("performance", "load_tests"):
-            if (root / sub).is_dir():
-                candidates.extend(sorted((root / sub).glob("*.py")))
-        for candidate in candidates:
-            if candidate.is_file():
-                for item in _extract_locust_tasks(label, candidate):
-                    if item["target"] not in seen_targets:
-                        inventory.append(item)
-                        seen_targets.add(item["target"])
+                    # Check Locust files
+                    is_locust = filename.startswith("locustfile") or _has_locust_user(tree)
+                    if is_locust:
+                        inventory.append({
+                            "app": app_label,
+                            "engine": "locust",
+                            "name": filename,
+                            "target": str(file_path),
+                        })
+
+                    # Check Pytest functions/methods
+                    if filename.startswith("test_") or filename.endswith("_test.py"):
+                        for node in ast.walk(tree):
+                            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+                                inventory.append({
+                                    "app": app_label,
+                                    "engine": "pytest",
+                                    "name": f"{filename}::{node.name}",
+                                    "target": f"{file_path}::{node.name}",
+                                })
+
     return inventory
+
+
+def _has_locust_user(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for base in node.bases:
+                if isinstance(base, ast.Name) and base.id in {"HttpUser", "User", "FastHttpUser"}:
+                    return True
+    return False

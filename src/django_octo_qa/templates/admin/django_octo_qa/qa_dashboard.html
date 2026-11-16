@@ -34,6 +34,7 @@
     cursor: pointer;
     margin: 0 !important;
   }
+  .octo-qa-success { background: #2e7d32 !important; color: #ffffff !important; border: none !important; }
   .octo-qa-danger { background: #ba2121 !important; color: #ffffff !important; border: none !important; }
   .octo-qa-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
   .octo-qa-passed { background: #2e7d32; color: #fff; }
@@ -54,6 +55,10 @@
     {% if runner_allowed %}
       <form method="post" style="margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
         {% csrf_token %}
+        <button type="submit" name="qa_action" value="import_suites" class="button octo-qa-btn octo-qa-success">Import Octo Suites</button>
+        {% if has_imported_suites %}
+          <button type="submit" name="qa_action" value="clear_suites" class="button octo-qa-btn octo-qa-danger">Clear Suites</button>
+        {% endif %}
         <button type="submit" name="qa_action" value="run_pytest" class="button octo-qa-btn">Run All Pytest</button>
         <button type="submit" name="qa_action" value="run_behave" class="button octo-qa-btn">Run All Behave</button>
         <button type="submit" name="qa_action" value="run_locust" class="button default octo-qa-btn">Run Locust Load</button>
@@ -86,6 +91,7 @@
     </div>
     <pre id="qa-console-output" style="margin: 0; padding: 16px; max-height: 38vh; overflow: auto; font-family: monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap;">{% if active_record %}{{ active_record.console_output }}{% else %}Select an individual test below or run a full suite above.{% endif %}</pre>
   </div>
+
   <div class="module" style="border: 1px solid var(--border-color, #ddd); border-radius: 6px; overflow: hidden; margin-bottom: 24px;">
     <h2 style="margin: 0; padding: 10px 14px; font-size: 13px;">Discovered Test Inventory (By App &amp; Test Case)</h2>
     <table style="width: 100%; border-collapse: collapse;">
@@ -153,18 +159,20 @@
                 <a href="?record={{ item.id }}" class="button octo-qa-btn-sm">
                   {% if active_record and item.id == active_record.id %}Viewing{% else %}View{% endif %}
                 </a>
-                <form method="post" style="margin: 0;" onsubmit="return confirm('Delete QA execution #{{ item.id }}?');">
-                  {% csrf_token %}
-                  <button type="submit" name="delete_record" value="{{ item.id }}" class="button octo-qa-btn-sm octo-qa-danger">
-                    Delete
-                  </button>
-                </form>
+                {% if request.user.is_superuser %}
+                  <form method="post" style="margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" name="delete_record" value="{{ item.id }}" class="button octo-qa-btn-sm octo-qa-danger">
+                      Delete
+                    </button>
+                  </form>
+                {% endif %}
               </div>
             </td>
           </tr>
         {% empty %}
           <tr>
-            <td colspan="7" style="padding: 14px; text-align: center; opacity: 0.7;">No execution history available.</td>
+            <td colspan="7" style="padding: 14px; text-align: center; opacity: 0.7;">No QA execution history yet.</td>
           </tr>
         {% endfor %}
       </tbody>
@@ -173,18 +181,16 @@
 </div>
 
 <script>
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", function () {
     const copyBtn = document.getElementById("btn-copy-log");
-    const logPre = document.getElementById("qa-console-output");
-    if (copyBtn && logPre) {
-      copyBtn.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(logPre.innerText);
-          copyBtn.textContent = "Copied!";
-          setTimeout(() => { copyBtn.textContent = "Copy Log"; }, 1800);
-        } catch (err) {
-          console.error("Clipboard copy failed:", err);
-        }
+    const consolePre = document.getElementById("qa-console-output");
+    if (copyBtn && consolePre) {
+      copyBtn.addEventListener("click", function () {
+        navigator.clipboard.writeText(consolePre.innerText).then(function () {
+          const original = copyBtn.innerText;
+          copyBtn.innerText = "Copied!";
+          setTimeout(function () { copyBtn.innerText = original; }, 1500);
+        });
       });
     }
   });

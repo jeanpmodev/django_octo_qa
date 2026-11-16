@@ -1,8 +1,11 @@
+from pathlib import Path
+from django.conf import settings
 from django.contrib import admin, messages
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from .discovery import discover_qa_inventory
+from .importer import clear_octo_ecosystem_suites, import_octo_ecosystem_suites
 from .models import TestExecutionRecord
 from .runner import is_runner_allowed, run_behave_target, run_locust_target, run_pytest_target
 
@@ -42,6 +45,23 @@ class TestExecutionRecordAdmin(admin.ModelAdmin):
             target = request.POST.get("target") or None
             scope_label = request.POST.get("scope_label") or "all"
 
+            if action == "import_suites":
+                summary = import_octo_ecosystem_suites()
+                total_files = sum(summary.values())
+                details = ", ".join(f"{mod}: {cnt}" for mod, cnt in summary.items())
+                self.message_user(
+                    request,
+                    f"Imported {total_files} test files ({details}).",
+                    level=messages.SUCCESS,
+                )
+                return redirect(request.path)
+
+            if action == "clear_suites":
+                removed = clear_octo_ecosystem_suites()
+                msg = "Imported Octo test suites removed." if removed else "No imported suites found."
+                self.message_user(request, msg, level=messages.WARNING)
+                return redirect(request.path)
+
             if action == "run_pytest":
                 rec = run_pytest_target(target=target, scope_label=scope_label)
                 self.message_user(request, f"Pytest ({scope_label}): {rec.status}", level=messages.INFO)
@@ -72,6 +92,9 @@ class TestExecutionRecordAdmin(admin.ModelAdmin):
             )
             return response
 
+        base_dir = Path(getattr(settings, "BASE_DIR", Path.cwd())).resolve()
+        has_imported_suites = (base_dir / "octo_suites").is_dir()
+
         inventory = discover_qa_inventory()
         context = {
             **self.admin_site.each_context(request),
@@ -87,6 +110,7 @@ class TestExecutionRecordAdmin(admin.ModelAdmin):
                 "id", "executed_at", "engine", "target_scope", "status", "duration_seconds"
             )[:50],
             "runner_allowed": request.user.is_superuser and is_runner_allowed(),
+            "has_imported_suites": has_imported_suites,
             **(extra_context or {}),
         }
         return TemplateResponse(

@@ -112,3 +112,6 @@ def _has_locust_user(tree: ast.AST) -> bool:
                 if isinstance(base, ast.Name) and base.id in {"HttpUser", "User", "FastHttpUser"}:
                     return True
     return False
+
+def discover_qa_inventory() -> list[dict]:
+    return discover_all_tests()

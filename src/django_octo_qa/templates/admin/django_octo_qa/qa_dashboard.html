@@ -41,6 +41,15 @@
   .octo-qa-failed { background: #ba2121; color: #fff; }
   .octo-qa-error { background: #ed6c02; color: #fff; }
   .octo-qa-eng { background: #417690; color: #fff; }
+  .octo-qa-filter-input {
+    height: 28px !important;
+    padding: 2px 8px !important;
+    font-size: 12px !important;
+    border-radius: 4px;
+    border: 1px solid var(--border-color, #ccc);
+    background: var(--body-bg, #fff);
+    color: var(--body-fg, #333);
+  }
 </style>
 
 <div id="content-main" style="padding: 10px 0;">
@@ -69,6 +78,7 @@
       </span>
     {% endif %}
   </div>
+
   <div style="width: 100%; border: 1px solid var(--border-color, #ccc); border-radius: 6px; background: #1e1e1e; color: #d4d4d4; margin-bottom: 24px; overflow: hidden;">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #2d2d2d; border-bottom: 1px solid #404040;">
       {% if active_record %}
@@ -91,44 +101,62 @@
     </div>
     <pre id="qa-console-output" style="margin: 0; padding: 16px; max-height: 38vh; overflow: auto; font-family: monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap;">{% if active_record %}{{ active_record.console_output }}{% else %}Select an individual test below or run a full suite above.{% endif %}</pre>
   </div>
-
   <div class="module" style="border: 1px solid var(--border-color, #ddd); border-radius: 6px; overflow: hidden; margin-bottom: 24px;">
-    <h2 style="margin: 0; padding: 10px 14px; font-size: 13px;">Discovered Test Inventory (By App &amp; Test Case)</h2>
-    <table style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr>
-          <th style="padding: 10px 14px; text-align: left;">App</th>
-          <th style="padding: 10px 14px; text-align: left;">Engine</th>
-          <th style="padding: 10px 14px; text-align: left;">Test / Scenario Name</th>
-          <th style="padding: 10px 14px; text-align: right;">Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in inventory %}
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--darkened-bg, #f8f9fa); border-bottom: 1px solid var(--border-color, #ddd);">
+      <h2 style="margin: 0; font-size: 13px; background: transparent; color: inherit; padding: 0;">
+        Discovered Test Inventory (<span id="qa-visible-count">{{ inventory|length }}</span> / {{ inventory|length }})
+      </h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <select id="filter-qa-app" class="octo-qa-filter-input">
+          <option value="">All Modules (App)</option>
+        </select>
+        <select id="filter-qa-engine" class="octo-qa-filter-input">
+          <option value="">All Engines</option>
+          <option value="pytest">PYTEST</option>
+          <option value="behave">BEHAVE</option>
+          <option value="locust">LOCUST</option>
+        </select>
+        <input type="text" id="filter-qa-search" class="octo-qa-filter-input" placeholder="Search test name..." style="min-width: 190px;">
+      </div>
+    </div>
+
+    <div style="max-height: 460px; overflow-y: auto;">
+      <table id="qa-inventory-table" style="width: 100%; border-collapse: collapse;">
+        <thead>
           <tr>
-            <td style="padding: 8px 14px;"><strong>{{ item.app }}</strong></td>
-            <td style="padding: 8px 14px;"><span class="octo-qa-badge octo-qa-eng">{{ item.engine|upper }}</span></td>
-            <td style="padding: 8px 14px; font-family: monospace; font-size: 12px;">{{ item.name }}</td>
-            <td style="padding: 8px 14px; text-align: right;">
-              {% if runner_allowed %}
-                <form method="post" style="margin: 0;">
-                  {% csrf_token %}
-                  <input type="hidden" name="target" value="{{ item.target }}">
-                  <input type="hidden" name="scope_label" value="{{ item.app }} :: {{ item.name }}">
-                  <button type="submit" name="qa_action" value="run_{{ item.engine }}" class="button octo-qa-btn-sm">
-                    Run Test
-                  </button>
-                </form>
-              {% endif %}
-            </td>
+            <th style="padding: 10px 14px; text-align: left;">App</th>
+            <th style="padding: 10px 14px; text-align: left;">Engine</th>
+            <th style="padding: 10px 14px; text-align: left;">Test / Scenario Name</th>
+            <th style="padding: 10px 14px; text-align: right;">Action</th>
           </tr>
-        {% empty %}
-          <tr>
-            <td colspan="4" style="padding: 14px; text-align: center; opacity: 0.7;">No tests discovered across installed apps.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for item in inventory %}
+            <tr class="qa-inventory-row" data-app="{{ item.app }}" data-engine="{{ item.engine }}" data-name="{{ item.name|lower }}">
+              <td style="padding: 8px 14px;"><strong>{{ item.app }}</strong></td>
+              <td style="padding: 8px 14px;"><span class="octo-qa-badge octo-qa-eng">{{ item.engine|upper }}</span></td>
+              <td style="padding: 8px 14px; font-family: monospace; font-size: 12px;">{{ item.name }}</td>
+              <td style="padding: 8px 14px; text-align: right;">
+                {% if runner_allowed %}
+                  <form method="post" style="margin: 0;">
+                    {% csrf_token %}
+                    <input type="hidden" name="target" value="{{ item.target }}">
+                    <input type="hidden" name="scope_label" value="{{ item.app }} :: {{ item.name }}">
+                    <button type="submit" name="qa_action" value="run_{{ item.engine }}" class="button octo-qa-btn-sm">
+                      Run Test
+                    </button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="4" style="padding: 14px; text-align: center; opacity: 0.7;">No tests discovered across installed apps.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="module" style="border: 1px solid var(--border-color, #ddd); border-radius: 6px; overflow: hidden;">
@@ -193,6 +221,44 @@
         });
       });
     }
+
+    const appSelect = document.getElementById("filter-qa-app");
+    const engineSelect = document.getElementById("filter-qa-engine");
+    const searchInput = document.getElementById("filter-qa-search");
+    const rows = Array.from(document.querySelectorAll(".qa-inventory-row"));
+    const countSpan = document.getElementById("qa-visible-count");
+
+    if (appSelect && rows.length) {
+      const apps = Array.from(new Set(rows.map(r => r.dataset.app))).sort();
+      apps.forEach(app => {
+        const opt = document.createElement("option");
+        opt.value = app;
+        opt.textContent = app;
+        appSelect.appendChild(opt);
+      });
+    }
+
+    function applyFilters() {
+      const appVal = appSelect ? appSelect.value : "";
+      const engVal = engineSelect ? engineSelect.value : "";
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+      let visible = 0;
+
+      rows.forEach(row => {
+        const matchApp = !appVal || row.dataset.app === appVal;
+        const matchEng = !engVal || row.dataset.engine === engVal;
+        const matchText = !query || row.dataset.name.includes(query) || row.dataset.app.toLowerCase().includes(query);
+        const show = matchApp && matchEng && matchText;
+        row.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+
+      if (countSpan) countSpan.textContent = visible;
+    }
+
+    if (appSelect) appSelect.addEventListener("change", applyFilters);
+    if (engineSelect) engineSelect.addEventListener("change", applyFilters);
+    if (searchInput) searchInput.addEventListener("input", applyFilters);
   });
 </script>
 {% endblock %}

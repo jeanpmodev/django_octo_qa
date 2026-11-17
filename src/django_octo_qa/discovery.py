@@ -38,12 +38,22 @@ def get_scan_roots() -> list[tuple[str, Path]]:
     return roots
 
 
+def _resolve_app_label(default_label: str, file_path: Path) -> str:
+    """Extract module name when test resides inside octo_suites/<module_name>/."""
+    parts = file_path.parts
+    if "octo_suites" in parts:
+        idx = parts.index("octo_suites")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+    return default_label
+
+
 def discover_all_tests() -> list[dict]:
     """Scan all resolved roots across the 3 pillars: Pytest, BDD (Behave), and Locust."""
     inventory: list[dict] = []
     scanned_files: set[Path] = set()
 
-    for app_label, root_path in get_scan_roots():
+    for default_label, root_path in get_scan_roots():
         if not root_path.exists():
             continue
 
@@ -57,11 +67,13 @@ def discover_all_tests() -> list[dict]:
                     continue
                 scanned_files.add(file_path)
 
+                app_label = _resolve_app_label(default_label, file_path)
+
                 if filename.endswith(".feature"):
                     for line in file_path.read_text(encoding="utf-8", errors="ignore").splitlines():
                         stripped = line.strip()
                         if stripped.startswith(("Scenario:", "Scenario Outline:")):
-                            scenario_name = stripped.split(":", 1)[1].strip()
+                            scenario_name = stripped.split(":", 1)[-1].strip()
                             inventory.append({
                                 "app": app_label,
                                 "engine": "behave",

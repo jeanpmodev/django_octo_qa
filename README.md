@@ -1,4 +1,8 @@
-# Django-Octo QA
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jeanpmodev/jeanpmodev/main/assets/django-octo-qa.jpg" alt="Django-Octo-SEO" width="100%" />
+</p>
+
+# Django-Octo QA pypi library package
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://python.org)

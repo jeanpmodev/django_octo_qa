@@ -22,6 +22,7 @@
 [![Socket Badge](https://badge.socket.dev/pypi/package/django-octo-qa/0.1.0?artifact_id=tar-gz)](https://badge.socket.dev/pypi/package/django-octo-qa/0.1.0?artifact_id=tar-gz)
 [![codecov](https://codecov.io/github/jeanpmodev/django_octo_qa/graph/badge.svg?token=YUOBIXZE9A)](https://codecov.io/github/jeanpmodev/django_octo_qa)
 [![Documentation Status](https://readthedocs.org/projects/django-octo/badge/?version=latest)](https://django-octo.readthedocs.io/en/latest/qa/)
+[![PyPkgScore](https://pypkgscore.onrender.com/badge/django_octo_qa.svg)](https://pypkgscore.onrender.com/pt-br/p/django_octo_qa/)
 
 **Unified Django quality assurance and automated test orchestrator (Pytest, Behave BDD, and Locust) under the Django-Octo ecosystem.**
 

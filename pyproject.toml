@@ -22,8 +22,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com"
-Repository = "https://github.com"
+Homepage = "https://github.com/jeanpmodev/django_octo_qa"
+Documentation = "https://django-octo.readthedocs.io/en/latest/qa/"
+Repository = "https://github.com/jeanpmodev/django_octo_qa"
+Issues = "https://github.com/jeanpmodev/django_octo_qa/issues"
 
 [tool.rye]
 managed = true
